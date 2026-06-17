@@ -1,0 +1,87 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+
+# -------------------------
+# BUILD SYSTEM
+# -------------------------
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+# -------------------------
+# PROJECT METADATA
+# -------------------------
+[project]
+name = "lifeops-goals-service"
+version = "0.1.0"
+description = "LifeOps Goals Service — goal lifecycle, phases, actions, momentum tracking"
+requires-python = ">=3.11"
+
+# -------------------------
+# SETUPTOOLS (src layout)
+# -------------------------
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["app*"]
+
+# -------------------------
+# BLACK
+# -------------------------
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    lifeopsvenv
+  | venv
+  | .venv
+  | build
+  | dist
+  | __pycache__
+  | .git
+  | htmlcov
+)/
+'''
+
+# -------------------------
+# ISORT
+# -------------------------
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+skip = [
+    "lifeopsvenv",
+    "venv",
+    ".venv",
+    "build",
+    "dist",
+    "__pycache__"
+]
+
+# -------------------------
+# MYPY
+# -------------------------
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+disallow_untyped_defs = false
+strict_optional = true
+show_error_codes = true
+
+# -------------------------
+# PYTEST
+# -------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --strict-markers --disable-warnings"
+asyncio_mode = "auto"
+pythonpath = ["src"]

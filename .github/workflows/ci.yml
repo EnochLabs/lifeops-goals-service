@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop", "feature/**", "fix/**", "chore/**"]
+  pull_request:
+    branches: ["main", "develop"]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ── Lint ─────────────────────────────────────────────────────
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dev dependencies
+        run: pip install black isort flake8 mypy bandit types-redis pydantic pydantic-settings
+
+      - name: Black
+        run: black --check src/ tests/
+
+      - name: isort
+        run: isort --check-only --profile black src/ tests/
+
+      - name: Flake8
+        run: flake8 src/ tests/
+
+      - name: Mypy
+        run: mypy src/ --ignore-missing-imports
+
+      - name: Bandit (security scan)
+        run: bandit -r src/ -ll
+
+  # ── Tests ─────────────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          ENVIRONMENT: test
+          MONGODB_URL: mongodb://localhost:27017
+          REDIS_URL: redis://localhost:6379/0
+          INTERNAL_API_KEY: ci-test-key
+          AUTH_SERVICE_INTERNAL_URL: http://localhost:8001
+          AI_SERVICE_INTERNAL_URL: http://localhost:8007
+          JSON_LOGS: "false"
+          LOG_LEVEL: WARNING
+        run: |
+          pytest tests/ \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            -v
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ── Docker build check ────────────────────────────────────────
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t lifeops-goals-service:ci .
+
+      - name: Smoke test container
+        run: |
+          docker run -d \
+            -e ENVIRONMENT=test \
+            -e MONGODB_URL=mongodb://host.docker.internal:27017 \
+            -e REDIS_URL=redis://host.docker.internal:6379/0 \
+            -e INTERNAL_API_KEY=ci-smoke-key \
+            -p 8002:8002 \
+            --name goals-smoke \
+            lifeops-goals-service:ci || true
+          sleep 5
+          docker logs goals-smoke || true
+          docker stop goals-smoke || true

@@ -1,0 +1,93 @@
+version: "3.9"
+
+services:
+  # ── Goals Service ────────────────────────────────────────────
+  goals-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: lifeops-goals-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MONGODB_URL: mongodb://mongo:27017
+      REDIS_URL: redis://redis:6379/0
+      AUTH_SERVICE_INTERNAL_URL: http://auth-service:8001
+      AI_SERVICE_INTERNAL_URL: http://ai-service:8007
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./src:/app/src          # hot-reload in dev
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - lifeops-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Nginx ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: lifeops-goals-nginx
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - goals-service
+    networks:
+      - lifeops-network
+
+  # ── MongoDB ───────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: lifeops-goals-mongo
+    restart: unless-stopped
+    ports:
+      - "27018:27017"           # offset from auth-service mongo on 27017
+    volumes:
+      - goals_mongo_data:/data/db
+    networks:
+      - lifeops-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Redis ─────────────────────────────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    container_name: lifeops-goals-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6380:6379"             # offset from auth-service redis on 6379
+    volumes:
+      - goals_redis_data:/data
+    networks:
+      - lifeops-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  goals_mongo_data:
+  goals_redis_data:
+
+networks:
+  lifeops-network:
+    external: true             # shared network with auth-service and other services
+    name: lifeops-network
