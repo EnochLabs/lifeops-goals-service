@@ -55,6 +55,7 @@ class Action(Document):
     next_due: Optional[datetime] = None  # for HABIT actions
     recurrence: Optional[Recurrence] = None  # only for HABIT actions
     estimated_minutes: Optional[int] = Field(None, ge=1)
+    contributes_value: Optional[float] = Field(None, ge=0, description="When completed, increments parent goal's current_value")
 
     # ── Completion ─────────────────────────────────────────────
     completed_at: Optional[datetime] = None

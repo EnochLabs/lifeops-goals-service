@@ -41,6 +41,11 @@ class Goal(Document):
     completed_at: Optional[datetime] = None
     paused_at: Optional[datetime] = None
 
+    # ── Numeric Progress ──────────────────────────────────────
+    target_value: Optional[float] = Field(None, ge=0, description="Target numeric value (e.g., $2000, 21.1 km)")
+    current_value: Optional[float] = Field(None, ge=0, description="Current numeric value achieved")
+    unit: Optional[str] = Field(None, max_length=50, description="Unit of measurement (e.g., $, km, hours)")
+
     # ── Momentum ───────────────────────────────────────────────
     momentum_score: Optional[float] = Field(None, ge=0, le=100)
     last_momentum_calc: Optional[datetime] = None
