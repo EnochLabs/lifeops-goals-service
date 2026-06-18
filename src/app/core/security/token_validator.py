@@ -7,7 +7,7 @@ endpoint.  Responses are cached in Redis for 60 s per JTI.
 """
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import httpx
 from loguru import logger
@@ -74,7 +74,7 @@ async def _get_cached(token: str) -> Optional[Dict[str, Any]]:
     try:
         raw = await redis_client.get(await _cache_key(token))
         if raw:
-            return json.loads(raw)
+            return cast(Dict[str, Any], json.loads(raw))
     except Exception:
         pass
     return None

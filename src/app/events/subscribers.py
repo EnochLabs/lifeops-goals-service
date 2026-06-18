@@ -18,8 +18,8 @@ from loguru import logger
 from app.config.settings import settings
 from app.events.event_types import (
     AI_EVENTS_CHANNEL,
-    INBOUND_CHANNEL,
     INBOUND_AI_DECOMPOSITION_RESULT,
+    INBOUND_CHANNEL,
     INBOUND_PLAN_DOWNGRADED,
     INBOUND_PLAN_UPGRADED,
     INBOUND_USER_DELETED,

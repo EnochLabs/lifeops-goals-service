@@ -25,11 +25,11 @@ from app.events.subscribers import start_subscriber
 async def _init_db() -> None:
     """Initialise Beanie ODM with all document models."""
     # Models imported here to avoid circular imports at module level
-    from app.models.goal import Goal
     from app.models.action import Action
+    from app.models.goal import Goal
     from app.models.phase import Phase
 
-    mongo_client = AsyncIOMotorClient(settings.MONGODB_URL)
+    mongo_client: AsyncIOMotorClient = AsyncIOMotorClient(settings.MONGODB_URL)
     await beanie.init_beanie(
         database=mongo_client[settings.DATABASE_NAME],
         document_models=[Goal, Phase, Action],

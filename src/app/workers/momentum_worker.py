@@ -26,8 +26,8 @@ async def recalculate_momentum_for_all() -> None:
     Loads all ACTIVE goals and recomputes their momentum scores.
     Implemented fully once Goal and Action models are in place.
     """
-    from app.repositories.goal_repository import GoalRepository
     from app.repositories.action_repository import ActionRepository
+    from app.repositories.goal_repository import GoalRepository
 
     since = datetime.now(UTC) - timedelta(days=MOMENTUM_WINDOW_DAYS)
     active_goals = await GoalRepository.list_by_status(GoalStatus.ACTIVE)
@@ -40,7 +40,9 @@ async def recalculate_momentum_for_all() -> None:
 
             score = (completions / total * 100) if total > 0 else 0.0
 
-            was_low = goal.momentum_score is not None and goal.momentum_score < MOMENTUM_LOW_THRESHOLD
+            was_low = (
+                goal.momentum_score is not None and goal.momentum_score < MOMENTUM_LOW_THRESHOLD
+            )
             is_low = score < MOMENTUM_LOW_THRESHOLD
 
             await GoalRepository.update_momentum(goal_id, score)
@@ -61,9 +63,7 @@ async def recalculate_momentum_for_all() -> None:
 
 async def run_momentum_recalc() -> None:
     """Infinite loop — runs the momentum recalculation on the configured interval."""
-    logger.info(
-        f"Momentum worker started (interval: {settings.MOMENTUM_RECALC_INTERVAL_HOURS}h)"
-    )
+    logger.info(f"Momentum worker started (interval: {settings.MOMENTUM_RECALC_INTERVAL_HOURS}h)")
     while True:
         try:
             await asyncio.sleep(_INTERVAL_SECONDS)

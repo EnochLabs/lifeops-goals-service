@@ -62,6 +62,7 @@ pytest-asyncio==0.25.3
 pytest-cov==6.0.0
 httpx==0.28.1
 fakeredis==2.27.0
+asgi-lifespan==2.1.0
 
 # ----------------------------
 # CODE QUALITY / DEV TOOLS
