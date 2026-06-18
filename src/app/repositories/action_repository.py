@@ -64,15 +64,16 @@ class ActionRepository:
     @staticmethod
     async def create_next_recurrence(habit: Any, as_of: datetime) -> Optional[Any]:
         """Clone a habit action for the next recurrence window.
-        
+
         Creates a new independent Action linked to the template via parent_action_id.
         Increments the template's generation_count and rolls forward next_due.
         """
         from datetime import timedelta
+
         from dateutil.relativedelta import relativedelta
-        
+
         from app.constants.goals import ActionStatus, RecurrencePattern
-        from app.models.action import Action, Recurrence
+        from app.models.action import Action
 
         if not habit.recurrence:
             return None
@@ -88,7 +89,11 @@ class ActionRepository:
         elif recurrence.pattern == RecurrencePattern.BIWEEKLY:
             next_date = next_date + timedelta(weeks=2) if next_date else as_of + timedelta(weeks=2)
         elif recurrence.pattern == RecurrencePattern.MONTHLY:
-            next_date = next_date + relativedelta(months=1) if next_date else as_of + relativedelta(months=1)
+            next_date = (
+                next_date + relativedelta(months=1)
+                if next_date
+                else as_of + relativedelta(months=1)
+            )
         elif recurrence.pattern == RecurrencePattern.CUSTOM:
             # For CUSTOM pattern, find the next matching day of week
             if recurrence.days_of_week:
@@ -211,4 +216,3 @@ class ActionRepository:
     async def delete_all_for_goal(goal_id: str) -> None:
         """Delete all actions for a goal (cascade)."""
         await Action.find(Action.goal_id == PydanticObjectId(goal_id)).delete()
-

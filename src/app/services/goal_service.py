@@ -40,22 +40,22 @@ async def create_goal(
     unit: Optional[str] = None,
 ) -> Goal:
     """Create a new goal in DRAFT status.
-    
+
     Enforces MAX_GOALS_BY_PLAN and checks for duplicate title.
     Publishes goal.created event.
     """
     user_oid = PydanticObjectId(user_id)
-    
+
     # Enforce max goals limit
     active_goals = await Goal.find(
         Goal.user_id == user_oid,
         Goal.status == GoalStatus.ACTIVE,
     ).count()
-    
+
     max_allowed = MAX_GOALS_BY_PLAN.get(plan_tier, MAX_GOALS_BY_PLAN[PlanTier.FREE])
     if active_goals >= max_allowed:
         raise GoalLimitExceededError(max_allowed, plan_tier)
-    
+
     # Check for duplicate title (case-insensitive)
     existing = await Goal.find_one(
         Goal.user_id == user_oid,
@@ -63,7 +63,7 @@ async def create_goal(
     )
     if existing:
         raise DuplicateGoalError()
-    
+
     # Create goal in DRAFT
     goal = Goal(
         user_id=user_oid,
@@ -79,7 +79,7 @@ async def create_goal(
         status=GoalStatus.DRAFT,
     )
     await goal.insert()
-    
+
     # Publish event
     await publish_goal_event(
         event_type=GoalEvents.CREATED,
@@ -93,32 +93,33 @@ async def create_goal(
             "horizon": horizon,
         },
     )
-    
+
     return goal
 
 
 async def activate_goal(user_id: str, goal_id: str) -> Goal:
     """Transition a goal from DRAFT to ACTIVE.
-    
+
     Publishes goal.activated event.
     """
     goal = await GoalRepository.get_by_id(goal_id)
     if not goal:
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.user_id != PydanticObjectId(user_id):
-        raise GoalNotFoundError(goal_id)  # Don't leak existence
-    
+        # Don't leak existence
+        raise GoalNotFoundError(goal_id)
+
     if goal.status != GoalStatus.DRAFT:
         raise InvalidGoalStateError(
             f"Cannot activate goal in {goal.status} status. Only DRAFT goals can be activated."
         )
-    
+
     goal.status = GoalStatus.ACTIVE
     goal.activated_at = datetime.utcnow()
     goal.updated_at = datetime.utcnow()
     await goal.save()
-    
+
     await publish_goal_event(
         event_type=GoalEvents.ACTIVATED,
         goal_id=goal_id,
@@ -129,7 +130,7 @@ async def activate_goal(user_id: str, goal_id: str) -> Goal:
             "title": goal.title,
         },
     )
-    
+
     return goal
 
 
@@ -138,20 +139,20 @@ async def pause_goal(user_id: str, goal_id: str) -> Goal:
     goal = await GoalRepository.get_by_id(goal_id)
     if not goal:
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.user_id != PydanticObjectId(user_id):
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.status not in (GoalStatus.ACTIVE, GoalStatus.RESUMED):
         raise InvalidGoalStateError(
             f"Cannot pause goal in {goal.status} status. Only ACTIVE or RESUMED goals can be paused."
         )
-    
+
     goal.status = GoalStatus.PAUSED
     goal.paused_at = datetime.utcnow()
     goal.updated_at = datetime.utcnow()
     await goal.save()
-    
+
     await publish_goal_event(
         event_type=GoalEvents.PAUSED,
         goal_id=goal_id,
@@ -162,7 +163,7 @@ async def pause_goal(user_id: str, goal_id: str) -> Goal:
             "title": goal.title,
         },
     )
-    
+
     return goal
 
 
@@ -171,19 +172,19 @@ async def resume_goal(user_id: str, goal_id: str) -> Goal:
     goal = await GoalRepository.get_by_id(goal_id)
     if not goal:
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.user_id != PydanticObjectId(user_id):
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.status != GoalStatus.PAUSED:
         raise InvalidGoalStateError(
             f"Cannot resume goal in {goal.status} status. Only PAUSED goals can be resumed."
         )
-    
+
     goal.status = GoalStatus.RESUMED
     goal.updated_at = datetime.utcnow()
     await goal.save()
-    
+
     await publish_goal_event(
         event_type=GoalEvents.RESUMED,
         goal_id=goal_id,
@@ -194,36 +195,35 @@ async def resume_goal(user_id: str, goal_id: str) -> Goal:
             "title": goal.title,
         },
     )
-    
+
     return goal
 
 
 async def complete_goal(user_id: str, goal_id: str) -> Goal:
     """Mark a goal as completed.
-    
+
     Publishes goal.completed event with celebration data.
     """
     goal = await GoalRepository.get_by_id(goal_id)
     if not goal:
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.user_id != PydanticObjectId(user_id):
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.status not in (GoalStatus.ACTIVE, GoalStatus.PAUSED, GoalStatus.RESUMED):
-        raise InvalidGoalStateError(
-            f"Cannot complete goal in {goal.status} status."
-        )
-    
+        raise InvalidGoalStateError(f"Cannot complete goal in {goal.status} status.")
+
     goal.status = GoalStatus.COMPLETED
     goal.completed_at = datetime.utcnow()
     goal.updated_at = datetime.utcnow()
     await goal.save()
-    
+
     # Get phase count for celebration card
     from app.repositories.phase_repository import PhaseRepository
+
     phase_count = await PhaseRepository.count_for_goal(goal_id)
-    
+
     await publish_goal_event(
         event_type=GoalEvents.COMPLETED,
         goal_id=goal_id,
@@ -237,29 +237,29 @@ async def complete_goal(user_id: str, goal_id: str) -> Goal:
             "category": goal.category,
         },
     )
-    
+
     return goal
 
 
 async def abandon_goal(user_id: str, goal_id: str, reason: Optional[str] = None) -> Goal:
     """Archive a goal as abandoned (no shame, just archive).
-    
+
     This is for goals the user is no longer pursuing, and is a positive
     alternative to deletion — the data is preserved for learning.
     """
     goal = await GoalRepository.get_by_id(goal_id)
     if not goal:
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.user_id != PydanticObjectId(user_id):
         raise GoalNotFoundError(goal_id)
-    
+
     goal.status = GoalStatus.ABANDONED
     goal.updated_at = datetime.utcnow()
     if reason:
         goal.note = f"Abandoned: {reason}"
     await goal.save()
-    
+
     await publish_goal_event(
         event_type=GoalEvents.ABANDONED,
         goal_id=goal_id,
@@ -271,28 +271,28 @@ async def abandon_goal(user_id: str, goal_id: str, reason: Optional[str] = None)
             "reason": reason,
         },
     )
-    
+
     return goal
 
 
 async def update_goal_progress(
-    user_id: str, 
-    goal_id: str, 
+    user_id: str,
+    goal_id: str,
     new_current_value: float,
 ) -> Goal:
     """Update the current progress value of a goal.
-    
+
     Usually called by action_service when an action with contributes_value is completed.
     """
     goal = await GoalRepository.get_by_id(goal_id)
     if not goal:
         raise GoalNotFoundError(goal_id)
-    
+
     if goal.user_id != PydanticObjectId(user_id):
         raise GoalNotFoundError(goal_id)
-    
+
     goal.current_value = new_current_value
     goal.updated_at = datetime.utcnow()
     await goal.save()
-    
+
     return goal

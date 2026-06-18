@@ -90,4 +90,3 @@ async def publish_action_event(
         **payload,
     }
     await publish_event(event_type, enriched_payload)
-
