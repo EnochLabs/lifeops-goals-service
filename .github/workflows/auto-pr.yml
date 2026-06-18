@@ -1,4 +1,4 @@
-name: Auto PR to Develop
+name: Auto PR to Main
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 
 jobs:
   auto-pr:
-    name: Open PR → develop
+    name: Open PR → main
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -24,7 +24,7 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          base: develop
+          base: main
           title: "[${{ github.ref_name }}] Auto PR"
           body: |
             ## Automated PR
