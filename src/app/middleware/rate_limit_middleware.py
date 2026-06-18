@@ -6,7 +6,7 @@ Per-user, per-action limits are handled separately in core/dependencies/rate_lim
 import time
 
 from loguru import logger
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -17,7 +17,7 @@ _WINDOW_SECONDS = 60
 
 
 class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Skip rate limiting on health checks
         if request.url.path in ("/health", "/health/live", "/health/ready"):
             return await call_next(request)
