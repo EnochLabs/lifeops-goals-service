@@ -7,7 +7,7 @@ Actions are completed, skipped, rescheduled, and can contribute to goal progress
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, cast
 
 from beanie import PydanticObjectId
 
@@ -297,14 +297,15 @@ async def list_todays_actions(user_id: str, as_of: datetime) -> list[Action]:
         return []
 
     # Get all actions due today or earlier, not completed
-    actions = (
+    actions = cast(
+        list[Action],
         await Action.find(
             Action.goal_id.in_([PydanticObjectId(str(gid)) for gid in goal_ids]),
             Action.status.in_([ActionStatus.PENDING, ActionStatus.IN_PROGRESS]),
             Action.due_date <= as_of,
         )
         .sort([(Action.due_date, 1)])
-        .to_list()
+        .to_list(),
     )
 
     return actions
