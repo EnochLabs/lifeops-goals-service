@@ -35,6 +35,27 @@ class GoalRepository:
         return cast(List[Any], await Goal.find(Goal.status == status).to_list())
 
     @staticmethod
+    async def list_active_for_user(user_id: str) -> List[Any]:
+        """Return all ACTIVE and RESUMED goals for a user.
+
+        RESUMED goals behave identically to ACTIVE for momentum and today's-focus
+        purposes (sprint plan §2.2: RESUMED is treated as ACTIVE for momentum).
+        """
+        from beanie import PydanticObjectId
+        from beanie.operators import In
+
+        from app.constants.goals import GoalStatus
+        from app.models.goal import Goal
+
+        return cast(
+            List[Any],
+            await Goal.find(
+                Goal.user_id == PydanticObjectId(user_id),
+                In(Goal.status, [GoalStatus.ACTIVE, GoalStatus.RESUMED]),
+            ).to_list(),
+        )
+
+    @staticmethod
     async def get_by_id_raw(goal_id: str) -> Optional[Dict[str, Any]]:
         """Return a raw dict for a goal (used by internal access-check route)."""
         from beanie import PydanticObjectId
