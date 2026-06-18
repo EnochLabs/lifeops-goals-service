@@ -234,6 +234,27 @@ class Mutation:
         if not user:
             raise UnauthenticatedError()
 
+        # ── Rate limit enforcement (GS-2.3) ─────────────────────────────
+        # REORDER_PHASES_RATE_LIMIT is 30/hour; enforced here because
+        # GraphQL mutations don't go through FastAPI route dependencies.
+        from app.config.redis import redis_client
+        from app.constants.limits import REORDER_PHASES_RATE_LIMIT
+        from app.core.exceptions.base import RateLimitExceededError
+
+        rl_key = f"goals:rate:reorder_phases:{user.user_id}"
+        try:
+            count = await redis_client.incr(rl_key)
+            if count == 1:
+                await redis_client.expire(rl_key, 3600)
+            if count > REORDER_PHASES_RATE_LIMIT:
+                raise RateLimitExceededError(
+                    f"reorderPhases is limited to {REORDER_PHASES_RATE_LIMIT} calls per hour."
+                )
+        except RateLimitExceededError:
+            raise
+        except Exception:
+            pass  # Fail-open: Redis unavailable must never block the user
+
         from app.services.phase_service import reorder_phases
 
         phases = await reorder_phases(

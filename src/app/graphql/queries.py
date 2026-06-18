@@ -31,6 +31,7 @@ from app.graphql.types import (
     PhaseGQLType,
     RecurrenceGQLType,
 )
+from app.repositories.action_repository import ActionRepository
 from app.repositories.goal_repository import GoalRepository
 from app.repositories.phase_repository import PhaseRepository
 
@@ -98,7 +99,15 @@ def _compute_progress_percent(goal: Any) -> Optional[float]:
 
 
 def _goal_to_type(goal: Any, phases: Optional[List[Any]] = None) -> GoalGQLType:
-    phase_types = [_phase_to_type(p) for p in phases] if phases is not None else None
+    """Convert a Goal document to GoalGQLType.
+
+    phases may be raw Phase documents (converted via _phase_to_type)
+    or already-converted PhaseGQLType objects (when the caller has
+    pre-loaded actions for the single-round-trip pattern in GS-2.6).
+    """
+    phase_types: Optional[List[PhaseGQLType]] = None
+    if phases is not None:
+        phase_types = [p if isinstance(p, PhaseGQLType) else _phase_to_type(p) for p in phases]
     return GoalGQLType(
         id=str(goal.id),
         user_id=str(goal.user_id),
@@ -181,7 +190,14 @@ class Query:
             raise GoalNotFoundError(str(goal_id))
 
         phases = await PhaseRepository.list_for_goal(str(goal.id))
-        return _goal_to_type(goal, phases)
+        # Eagerly load actions for each phase — single logical round-trip per
+        # GS-2.6: Goal.phases and Phase.actions resolve in one query.
+        phases_with_actions = []
+        for phase in phases:
+            actions = await ActionRepository.list_for_phase(str(phase.id))
+            phases_with_actions.append((phase, actions))
+        phase_types = [_phase_to_type(p, acts) for p, acts in phases_with_actions]
+        return _goal_to_type(goal, phase_types)
 
     @strawberry.field(
         description=(

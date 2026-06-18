@@ -285,27 +285,33 @@ async def list_todays_actions(user_id: str, as_of: datetime) -> list[Action]:
 
     Sorted by goal priority, then by due date.
     """
-    from app.constants.goals import GoalStatus
-
-    user_oid = PydanticObjectId(user_id)
-
-    # Get all active goals for user
-    goals = await GoalRepository.list_by_status(GoalStatus.ACTIVE)
-    goal_ids = [g.id for g in goals if g.user_id == user_oid]
+    # Get all active and resumed goals for the user (RESUMED = active for momentum).
+    goals = await GoalRepository.list_active_for_user(user_id)
+    goal_ids = [g.id for g in goals]
 
     if not goal_ids:
         return []
 
-    # Get all actions due today or earlier, not completed
+    # Get all actions due today or earlier, not completed.
+    # Use beanie operators for set membership — .in_() on ExpressionField
+    # is not callable in this version; use the In operator instead.
+    from beanie.operators import In
+
     actions = cast(
         list[Action],
         await Action.find(
-            Action.goal_id.in_([PydanticObjectId(str(gid)) for gid in goal_ids]),
-            Action.status.in_([ActionStatus.PENDING, ActionStatus.IN_PROGRESS]),
+            In(Action.goal_id, [PydanticObjectId(str(gid)) for gid in goal_ids]),
+            In(Action.status, [ActionStatus.PENDING, ActionStatus.IN_PROGRESS]),
             Action.due_date <= as_of,
         )
         .sort([(Action.due_date, 1)])
         .to_list(),
     )
+
+    # Sort by goal priority (descending — CRITICAL=4 first), then due date ascending.
+    # MongoDB cannot sort across collections, so we post-sort in Python using a
+    # goal_id → priority map built from the already-fetched goals list.
+    goal_priority: dict = {str(g.id): g.priority for g in goals}
+    actions.sort(key=lambda a: (-goal_priority.get(str(a.goal_id), 0), a.due_date or datetime.max))
 
     return actions
