@@ -12,14 +12,20 @@ from typing import List, Optional
 
 import beanie
 from beanie import Document
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from app.constants.goals import ActionStatus, ActionType, RecurrencePattern
 
 
-class Recurrence(beanie.UnionDoc):
-    """Recurrence config — only present for HABIT actions."""
+class Recurrence(BaseModel):
+    """Recurrence config — only present for HABIT actions.
+
+    Plain embedded value object, not a top-level document. `beanie.UnionDoc`
+    is for polymorphic top-level collections and cannot be used as a nested
+    field type — embedding it previously broke Pydantic schema generation
+    for the whole `Action` model at import time.
+    """
 
     pattern: str = Field(default=RecurrencePattern.DAILY)
     # For CUSTOM pattern: e.g. [0, 2, 4] = Mon, Wed, Fri (weekday indices)
@@ -46,8 +52,8 @@ class Action(Document):
 
     # ── Scheduling ─────────────────────────────────────────────
     due_date: Optional[datetime] = None
-    next_due: Optional[datetime] = None          # for HABIT actions
-    recurrence: Optional[Recurrence] = None      # only for HABIT actions
+    next_due: Optional[datetime] = None  # for HABIT actions
+    recurrence: Optional[Recurrence] = None  # only for HABIT actions
     estimated_minutes: Optional[int] = Field(None, ge=1)
 
     # ── Completion ─────────────────────────────────────────────
