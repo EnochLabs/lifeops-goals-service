@@ -145,7 +145,8 @@ async def pause_goal(user_id: str, goal_id: str) -> Goal:
 
     if goal.status not in (GoalStatus.ACTIVE, GoalStatus.RESUMED):
         raise InvalidGoalStateError(
-            f"Cannot pause goal in {goal.status} status. Only ACTIVE or RESUMED goals can be paused."
+            "Cannot pause goal in {status} status. "
+            "Only ACTIVE or RESUMED goals can be paused.".format(status=goal.status)
         )
 
     goal.status = GoalStatus.PAUSED
