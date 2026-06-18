@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from loguru import logger
 
 from app.config.settings import settings
-from app.constants.goals import ActionStatus, ActionType, GoalStatus
+from app.constants.goals import GoalStatus
 from app.events.event_types import ActionEvents
 from app.events.publisher import publish_event
 

@@ -4,6 +4,7 @@ Event subscriber for the Goals Service.
 Listens to:
   - lifeops:events:auth   (user.deleted, user.plan_upgraded, user.plan_downgraded)
   - lifeops:events:ai     (ai.decomposition_result)
+  - lifeops:events:health (health_log_saved — for energy-based auto-rescheduling, Sprint 3)
 
 Started as a background task during app lifespan.
 """
@@ -25,7 +26,13 @@ from app.events.event_types import (
     INBOUND_USER_DELETED,
 )
 
-_CHANNELS = [INBOUND_CHANNEL, AI_EVENTS_CHANNEL]
+# Health Service channel — subscribed now so no events are missed later.
+# The actual auto-reschedule handler is implemented in Sprint 3 when
+# actions exist. The no-op handler below is intentional and tested.
+HEALTH_EVENTS_CHANNEL = "lifeops:events:health"
+INBOUND_HEALTH_LOG_SAVED = "health_log_saved"
+
+_CHANNELS = [INBOUND_CHANNEL, AI_EVENTS_CHANNEL, HEALTH_EVENTS_CHANNEL]
 
 
 async def _handle_user_deleted(payload: Dict[str, Any]) -> None:
@@ -41,7 +48,6 @@ async def _handle_user_deleted(payload: Dict[str, Any]) -> None:
 
 async def _handle_plan_change(payload: Dict[str, Any], upgraded: bool) -> None:
     """Enforce/relax plan limits when a user's plan changes."""
-    from app.repositories.goal_repository import GoalRepository  # late import
 
     user_id = payload.get("user_id")
     new_plan = payload.get("new_plan")
@@ -54,7 +60,6 @@ async def _handle_plan_change(payload: Dict[str, Any], upgraded: bool) -> None:
 
 async def _handle_ai_decomposition_result(payload: Dict[str, Any]) -> None:
     """Apply AI-generated phases/actions to the goal."""
-    from app.repositories.goal_repository import GoalRepository  # late import
 
     goal_id = payload.get("goal_id")
     if not goal_id:
@@ -63,12 +68,31 @@ async def _handle_ai_decomposition_result(payload: Dict[str, Any]) -> None:
     # GoalService.apply_decomposition_result will be called here
 
 
+async def _handle_health_log_saved(payload: Dict[str, Any]) -> None:
+    """
+    Handle a health_log_saved event from the Health Service.
+
+    Sprint 3 will implement energy-based auto-rescheduling here:
+    when morning_energy <= 2, high-effort actions due today are
+    rescheduled to the next day with reason 'low_energy_day'.
+
+    For now, we log receipt so the subscription can be verified in tests.
+    """
+    user_id = payload.get("user_id")
+    energy = payload.get("morning_energy")
+    logger.debug(
+        f"[health_log_saved] received for user={user_id}, morning_energy={energy} "
+        f"— auto-reschedule logic pending Sprint 3"
+    )
+
+
 async def _dispatch(event_type: str, payload: Dict[str, Any]) -> None:
     handlers = {
         INBOUND_USER_DELETED: _handle_user_deleted,
         INBOUND_PLAN_UPGRADED: lambda p: _handle_plan_change(p, upgraded=True),
         INBOUND_PLAN_DOWNGRADED: lambda p: _handle_plan_change(p, upgraded=False),
         INBOUND_AI_DECOMPOSITION_RESULT: _handle_ai_decomposition_result,
+        INBOUND_HEALTH_LOG_SAVED: _handle_health_log_saved,
     }
     handler = handlers.get(event_type)
     if handler:

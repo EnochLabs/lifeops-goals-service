@@ -1,5 +1,3 @@
-import pytest
-
 from app.core.exceptions import (
     GoalNotFoundError,
     PlanFeatureLockedError,

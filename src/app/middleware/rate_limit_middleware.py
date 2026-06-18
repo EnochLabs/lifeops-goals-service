@@ -3,8 +3,6 @@ Global IP-level rate limiting middleware (sliding window, per minute).
 Per-user, per-action limits are handled separately in core/dependencies/rate_limit.py.
 """
 
-import time
-
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request

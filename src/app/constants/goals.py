@@ -23,6 +23,7 @@ class GoalStatus:
     DRAFT = "DRAFT"  # created but not yet activated
     ACTIVE = "ACTIVE"  # in progress
     PAUSED = "PAUSED"  # user paused (momentum frozen)
+    RESUMED = "RESUMED"  # resumed after pause (treated as ACTIVE for momentum)
     COMPLETED = "COMPLETED"  # all phases done
     ABANDONED = "ABANDONED"  # user gave up / archived
 
@@ -68,6 +69,8 @@ class RecurrencePattern:
     WEEKDAYS = "WEEKDAYS"  # Mon–Fri
     WEEKENDS = "WEEKENDS"
     WEEKLY = "WEEKLY"
+    BIWEEKLY = "BIWEEKLY"  # Every two weeks
+    MONTHLY = "MONTHLY"  # Once a month
     CUSTOM = "CUSTOM"  # specific days of week
 
 
