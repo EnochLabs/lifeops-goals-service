@@ -12,7 +12,7 @@ from typing import Optional
 import beanie
 from beanie import Document, Indexed
 from pydantic import Field
-from pymongo import IndexModel, ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, IndexModel
 
 from app.constants.goals import (
     DecompositionState,

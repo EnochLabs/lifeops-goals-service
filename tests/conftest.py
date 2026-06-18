@@ -53,9 +53,7 @@ async def client(fake_redis) -> AsyncGenerator[AsyncClient, None]:
         patch("app.middleware.rate_limit_middleware.redis_client", fake_redis),
         patch("app.core.dependencies.rate_limit.redis_client", fake_redis),
     ):
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://testserver"
-        ) as c:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
             yield c
 
 

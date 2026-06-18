@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     GLOBAL_RATE_LIMIT_PER_MINUTE: int = 300
     # Per-user rate limits (Redis sliding window, 1-hour window)
     CREATE_GOAL_RATE_LIMIT: int = 20
-    DECOMPOSE_GOAL_RATE_LIMIT: int = 5      # AI calls are expensive
+    DECOMPOSE_GOAL_RATE_LIMIT: int = 5  # AI calls are expensive
     COMPLETE_ACTION_RATE_LIMIT: int = 200
 
     # ── Background Jobs ───────────────────────────────────────────────

@@ -20,21 +20,21 @@ ALL_CATEGORIES = [v for k, v in GoalCategory.__dict__.items() if not k.startswit
 # GOAL STATUS
 # ─────────────────────────────────────────────────────────────
 class GoalStatus:
-    DRAFT = "DRAFT"           # created but not yet activated
-    ACTIVE = "ACTIVE"         # in progress
-    PAUSED = "PAUSED"         # user paused (momentum frozen)
-    COMPLETED = "COMPLETED"   # all phases done
-    ABANDONED = "ABANDONED"   # user gave up / archived
+    DRAFT = "DRAFT"  # created but not yet activated
+    ACTIVE = "ACTIVE"  # in progress
+    PAUSED = "PAUSED"  # user paused (momentum frozen)
+    COMPLETED = "COMPLETED"  # all phases done
+    ABANDONED = "ABANDONED"  # user gave up / archived
 
 
 # ─────────────────────────────────────────────────────────────
 # PHASE STATUS
 # ─────────────────────────────────────────────────────────────
 class PhaseStatus:
-    LOCKED = "LOCKED"         # future phase, not yet unlocked
-    ACTIVE = "ACTIVE"         # current phase being worked on
-    COMPLETED = "COMPLETED"   # all actions in phase done
-    SKIPPED = "SKIPPED"       # user explicitly skipped
+    LOCKED = "LOCKED"  # future phase, not yet unlocked
+    ACTIVE = "ACTIVE"  # current phase being worked on
+    COMPLETED = "COMPLETED"  # all actions in phase done
+    SKIPPED = "SKIPPED"  # user explicitly skipped
 
 
 # ─────────────────────────────────────────────────────────────
@@ -52,12 +52,12 @@ class ActionStatus:
 # ACTION TYPES
 # ─────────────────────────────────────────────────────────────
 class ActionType:
-    TASK = "TASK"               # one-off task
-    HABIT = "HABIT"             # recurring habit
-    MILESTONE = "MILESTONE"     # significant checkpoint
-    REFLECTION = "REFLECTION"   # journaling / review prompt
-    LEARNING = "LEARNING"       # consume content / study
-    CHALLENGE = "CHALLENGE"     # short burst challenge
+    TASK = "TASK"  # one-off task
+    HABIT = "HABIT"  # recurring habit
+    MILESTONE = "MILESTONE"  # significant checkpoint
+    REFLECTION = "REFLECTION"  # journaling / review prompt
+    LEARNING = "LEARNING"  # consume content / study
+    CHALLENGE = "CHALLENGE"  # short burst challenge
 
 
 # ─────────────────────────────────────────────────────────────
@@ -65,21 +65,21 @@ class ActionType:
 # ─────────────────────────────────────────────────────────────
 class RecurrencePattern:
     DAILY = "DAILY"
-    WEEKDAYS = "WEEKDAYS"       # Mon–Fri
+    WEEKDAYS = "WEEKDAYS"  # Mon–Fri
     WEEKENDS = "WEEKENDS"
     WEEKLY = "WEEKLY"
-    CUSTOM = "CUSTOM"           # specific days of week
+    CUSTOM = "CUSTOM"  # specific days of week
 
 
 # ─────────────────────────────────────────────────────────────
 # GOAL HORIZON  (time-frame intent)
 # ─────────────────────────────────────────────────────────────
 class GoalHorizon:
-    SPRINT = "SPRINT"           # < 2 weeks
-    SHORT = "SHORT"             # 2 weeks – 3 months
-    MEDIUM = "MEDIUM"           # 3 – 12 months
-    LONG = "LONG"               # > 12 months
-    LIFETIME = "LIFETIME"       # no end date
+    SPRINT = "SPRINT"  # < 2 weeks
+    SHORT = "SHORT"  # 2 weeks – 3 months
+    MEDIUM = "MEDIUM"  # 3 – 12 months
+    LONG = "LONG"  # > 12 months
+    LIFETIME = "LIFETIME"  # no end date
 
 
 # ─────────────────────────────────────────────────────────────
@@ -96,8 +96,8 @@ class Priority:
 # DECOMPOSITION STATE  (AI decomposition lifecycle)
 # ─────────────────────────────────────────────────────────────
 class DecompositionState:
-    NONE = "NONE"               # never decomposed
-    PENDING = "PENDING"         # queued to AI service
+    NONE = "NONE"  # never decomposed
+    PENDING = "PENDING"  # queued to AI service
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"

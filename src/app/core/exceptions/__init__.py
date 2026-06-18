@@ -1,8 +1,8 @@
 from app.core.exceptions.base import (  # noqa: F401
-    AIDecompositionLockedError,
-    AIServiceUnavailableError,
     ActionLimitExceededError,
     ActionNotFoundError,
+    AIDecompositionLockedError,
+    AIServiceUnavailableError,
     AuthServiceUnavailableError,
     DecompositionError,
     DuplicateGoalError,
