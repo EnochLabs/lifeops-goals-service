@@ -16,6 +16,18 @@ from typing import Any, Dict, List, Optional, cast
 class GoalRepository:
 
     @staticmethod
+    async def get_by_id(goal_id: str) -> Optional[Any]:
+        """Return a Goal document by ID, or None if not found."""
+        from beanie import PydanticObjectId
+
+        from app.models.goal import Goal
+
+        try:
+            return await Goal.get(PydanticObjectId(goal_id))
+        except Exception:
+            return None
+
+    @staticmethod
     async def list_by_status(status: str) -> List[Any]:
         """Return all goals with the given status."""
         from app.models.goal import Goal

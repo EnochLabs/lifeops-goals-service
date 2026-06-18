@@ -113,7 +113,9 @@ async def complete_phase(user_id: str, phase_id: str) -> Phase:
     await phase.save()
 
     # Try to unlock the next phase
-    next_phase = await PhaseRepository.get_next_locked_phase(str(phase.goal_id))
+    next_phase = await PhaseRepository.get_next_locked_phase(
+        str(phase.goal_id), after_order=phase.order
+    )
     if next_phase:
         next_phase.status = PhaseStatus.ACTIVE
         next_phase.unlocked_at = datetime.utcnow()
@@ -167,15 +169,18 @@ async def skip_phase(user_id: str, phase_id: str, reason: Optional[str] = None) 
     if phase.status not in (PhaseStatus.ACTIVE, PhaseStatus.LOCKED):
         raise InvalidPhaseStateError(f"Cannot skip phase in {phase.status} status.")
 
+    was_active = phase.status == PhaseStatus.ACTIVE
     phase.status = PhaseStatus.SKIPPED
     phase.updated_at = datetime.utcnow()
     if reason:
         phase.note = f"Skipped: {reason}"
     await phase.save()
 
-    # Unlock next phase if this was ACTIVE
-    if phase.status == PhaseStatus.ACTIVE:
-        next_phase = await PhaseRepository.get_next_locked_phase(str(phase.goal_id))
+    # Unlock next phase if this was the ACTIVE phase
+    if was_active:
+        next_phase = await PhaseRepository.get_next_locked_phase(
+            str(phase.goal_id), after_order=phase.order
+        )
         if next_phase:
             next_phase.status = PhaseStatus.ACTIVE
             next_phase.unlocked_at = datetime.utcnow()

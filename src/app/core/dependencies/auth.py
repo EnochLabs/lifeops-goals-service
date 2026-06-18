@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict
 
 from fastapi import Depends, Header
-from loguru import logger
 
 from app.config.settings import settings
 from app.constants.plans import PlanTier

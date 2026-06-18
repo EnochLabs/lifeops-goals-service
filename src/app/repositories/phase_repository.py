@@ -43,19 +43,18 @@ class PhaseRepository:
         )
 
     @staticmethod
-    async def get_next_locked_phase(goal_id: str) -> Optional[Any]:
-        """Return the next LOCKED phase after the current active one."""
+    async def get_next_locked_phase(goal_id: str, after_order: int = -1) -> Optional[Any]:
+        """Return the next LOCKED phase with order > after_order.
+
+        Pass `after_order` = the just-completed phase's order so the lookup
+        is independent of whether there is currently an ACTIVE phase.
+        When called with the default -1, returns the first LOCKED phase.
+        """
         from app.constants.goals import PhaseStatus
 
         phases = await PhaseRepository.list_for_goal(goal_id)
-        active_phase = await PhaseRepository.get_active_phase(goal_id)
-
-        if not active_phase:
-            return None
-
-        active_order = active_phase.order
         for phase in phases:
-            if phase.order > active_order and phase.status == PhaseStatus.LOCKED:
+            if phase.order > after_order and phase.status == PhaseStatus.LOCKED:
                 return phase
 
         return None

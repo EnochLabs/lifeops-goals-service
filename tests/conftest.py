@@ -7,15 +7,13 @@ Uses:
   - httpx.AsyncClient → async test client for FastAPI
 """
 
-import asyncio
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import beanie
 import fakeredis.aioredis
 import pytest
 import pytest_asyncio
-from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 from mongomock_motor import AsyncMongoMockClient
 
