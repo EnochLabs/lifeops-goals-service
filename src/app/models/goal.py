@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 import beanie
-from beanie import Document, Indexed
+from beanie import Document
 from pydantic import Field
 from pymongo import ASCENDING, DESCENDING, IndexModel
 
@@ -40,6 +40,15 @@ class Goal(Document):
     activated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     paused_at: Optional[datetime] = None
+
+    # ── Numeric Progress ──────────────────────────────────────
+    target_value: Optional[float] = Field(
+        None, ge=0, description="Target numeric value (e.g., $2000, 21.1 km)"
+    )
+    current_value: Optional[float] = Field(None, ge=0, description="Current numeric value achieved")
+    unit: Optional[str] = Field(
+        None, max_length=50, description="Unit of measurement (e.g., $, km, hours)"
+    )
 
     # ── Momentum ───────────────────────────────────────────────
     momentum_score: Optional[float] = Field(None, ge=0, le=100)
