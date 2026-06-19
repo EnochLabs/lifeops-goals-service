@@ -4,13 +4,14 @@ Event subscriber for the Goals Service.
 Listens to:
   - lifeops:events:auth   (user.deleted, user.plan_upgraded, user.plan_downgraded)
   - lifeops:events:ai     (ai.decomposition_result)
-  - lifeops:events:health (health_log_saved — for energy-based auto-rescheduling, Sprint 3)
+  - lifeops:events:health (health_log_saved — energy-based auto-rescheduling, GS-3.4)
 
 Started as a background task during app lifespan.
 """
 
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict
 
 import redis.asyncio as aioredis
@@ -26,18 +27,29 @@ from app.events.event_types import (
     INBOUND_USER_DELETED,
 )
 
-# Health Service channel — subscribed now so no events are missed later.
-# The actual auto-reschedule handler is implemented in Sprint 3 when
-# actions exist. The no-op handler below is intentional and tested.
+# Health Service channel — subscribed so no events are missed.
 HEALTH_EVENTS_CHANNEL = "lifeops:events:health"
 INBOUND_HEALTH_LOG_SAVED = "health_log_saved"
+
+# Energy threshold at or below which today's high-effort actions are rescheduled.
+# Matches the blueprint's worked example: energy in {1, 2} triggers a reschedule.
+_LOW_ENERGY_THRESHOLD = 2
+
+# Effort threshold in minutes — actions with estimated_minutes above this value
+# are considered "high-effort" for the purposes of auto-rescheduling.
+# Default 30 min is configurable via settings; the subscriber uses the value
+# from settings so integration tests can override it without patching constants.
+_HIGH_EFFORT_MINUTES: int = getattr(settings, "AUTO_RESCHEDULE_EFFORT_THRESHOLD_MINUTES", 30)
 
 _CHANNELS = [INBOUND_CHANNEL, AI_EVENTS_CHANNEL, HEALTH_EVENTS_CHANNEL]
 
 
+# ── Auth event handlers ───────────────────────────────────────────────────────
+
+
 async def _handle_user_deleted(payload: Dict[str, Any]) -> None:
     """Cascade-delete all goals for a deleted user."""
-    from app.repositories.goal_repository import GoalRepository  # late import to avoid circular
+    from app.repositories.goal_repository import GoalRepository
 
     user_id = payload.get("user_id")
     if not user_id:
@@ -47,43 +59,126 @@ async def _handle_user_deleted(payload: Dict[str, Any]) -> None:
 
 
 async def _handle_plan_change(payload: Dict[str, Any], upgraded: bool) -> None:
-    """Enforce/relax plan limits when a user's plan changes."""
+    """Enforce/relax plan limits when a user's plan changes.
 
+    On downgrade: goals beyond the new plan cap are moved to PAUSED (not deleted).
+    On upgrade: no immediate action needed — new limits are checked at creation time.
+    """
     user_id = payload.get("user_id")
     new_plan = payload.get("new_plan")
     if not user_id or not new_plan:
         return
+
     direction = "upgraded" if upgraded else "downgraded"
     logger.info(f"User {user_id} plan {direction} → {new_plan}")
-    # Further enforcement logic will be added when GoalService is implemented
+
+    if not upgraded:
+        # Downgrade path — implemented in Sprint 5 (GS-5.4).
+        # Logged here so the event is not silently swallowed.
+        logger.info(
+            f"Plan downgrade enforcement for user {user_id} pending Sprint 5 implementation."
+        )
+
+
+# ── AI event handlers ─────────────────────────────────────────────────────────
 
 
 async def _handle_ai_decomposition_result(payload: Dict[str, Any]) -> None:
-    """Apply AI-generated phases/actions to the goal."""
+    """Apply AI-generated phases/actions to the goal.
 
+    Full implementation in Sprint 4 (GS-4.3).
+    """
     goal_id = payload.get("goal_id")
     if not goal_id:
         return
     logger.info(f"Received AI decomposition result for goal {goal_id}")
-    # GoalService.apply_decomposition_result will be called here
+    # GoalService.apply_decomposition_result will be called here in Sprint 4
+
+
+# ── Health event handler — GS-3.4 ────────────────────────────────────────────
 
 
 async def _handle_health_log_saved(payload: Dict[str, Any]) -> None:
-    """
-    Handle a health_log_saved event from the Health Service.
+    """Auto-reschedule high-effort actions when morning energy is low (GS-3.4).
 
-    Sprint 3 will implement energy-based auto-rescheduling here:
-    when morning_energy <= 2, high-effort actions due today are
-    rescheduled to the next day with reason 'low_energy_day'.
+    Trigger: health_log_saved event with morning_energy in {1, 2}.
+    Effect:  all pending/in-progress actions due today with
+             estimated_minutes > _HIGH_EFFORT_MINUTES are pushed to tomorrow.
+    Reason:  'low_energy_day' — stored on the rescheduled action for transparency.
 
-    For now, we log receipt so the subscription can be verified in tests.
+    This matches the blueprint's worked example:
+      Tuesday, morning_energy=2 → "10 km run" (high effort) rescheduled to Wednesday.
+      "Buy running shoes" (low effort / no estimate) — not rescheduled.
+
+    Design note (§3 engagement philosophy):
+      - No notification shaming: the event payload does not include "missed" counts.
+      - No cascade: only *today's* actions are touched, not future scheduled ones.
+      - No opt-out requirement: the user can always manually re-reschedule back.
     """
     user_id = payload.get("user_id")
-    energy = payload.get("morning_energy")
-    logger.debug(
-        f"[health_log_saved] received for user={user_id}, morning_energy={energy} "
-        f"— auto-reschedule logic pending Sprint 3"
+    morning_energy = payload.get("morning_energy")
+
+    if not user_id or morning_energy is None:
+        logger.debug("[health_log_saved] missing user_id or morning_energy — ignoring")
+        return
+
+    try:
+        energy_val = int(morning_energy)
+    except (TypeError, ValueError):
+        logger.debug(f"[health_log_saved] non-numeric morning_energy={morning_energy!r} — ignoring")
+        return
+
+    if energy_val > _LOW_ENERGY_THRESHOLD:
+        logger.debug(
+            f"[health_log_saved] user={user_id}, morning_energy={energy_val} — no reschedule needed"
+        )
+        return
+
+    logger.info(
+        f"[health_log_saved] LOW ENERGY (energy={energy_val}) for user={user_id} "
+        f"— auto-rescheduling high-effort actions (>{_HIGH_EFFORT_MINUTES} min)"
     )
+
+    try:
+        from app.repositories.action_repository import ActionRepository
+        from app.services.action_service import reschedule_action
+
+        now = datetime.now(UTC).replace(tzinfo=None)  # naive UTC — consistent with stored dates
+        tomorrow = now + timedelta(days=1)
+        # Normalise to start-of-day so the reschedule reads clearly in the UI
+        tomorrow_noon = tomorrow.replace(hour=12, minute=0, second=0, microsecond=0)
+
+        todays_actions = await ActionRepository.list_for_user_due_today(user_id, now)
+
+        rescheduled_count = 0
+        for action in todays_actions:
+            # Only reschedule explicitly high-effort actions (those with an estimate set)
+            if action.estimated_minutes and action.estimated_minutes > _HIGH_EFFORT_MINUTES:
+                try:
+                    await reschedule_action(
+                        user_id=user_id,
+                        action_id=str(action.id),
+                        new_due_date=tomorrow_noon,
+                        reason="low_energy_day",
+                    )
+                    rescheduled_count += 1
+                    logger.info(
+                        f"  ↳ Rescheduled '{action.title}' "
+                        f"({action.estimated_minutes} min) to tomorrow"
+                    )
+                except Exception as action_err:
+                    logger.warning(f"  ↳ Could not reschedule action {action.id}: {action_err}")
+
+        logger.info(
+            f"[health_log_saved] auto-reschedule complete: "
+            f"{rescheduled_count} action(s) moved for user={user_id}"
+        )
+
+    except Exception as exc:
+        logger.error(f"[health_log_saved] auto-reschedule error for user={user_id}: {exc}")
+
+
+# ── Dispatcher ────────────────────────────────────────────────────────────────
 
 
 async def _dispatch(event_type: str, payload: Dict[str, Any]) -> None:

@@ -87,6 +87,32 @@ class PhaseGQLType:
 
 
 @strawberry.type
+class MomentumDataPoint:
+    """A single date → momentum score data point for sparkline rendering.
+
+    GS-3.2: 30-day momentum history, derived from completed_at timestamps.
+    Dates without any scheduled actions return the last known score rather
+    than zero, so the sparkline never shows a false crash on rest days.
+    """
+
+    date: str  # ISO date string YYYY-MM-DD
+    score: float  # 0.0–100.0
+
+
+@strawberry.type
+class HabitGridDay:
+    """A single day in the habit-grid (GitHub contribution graph shape).
+
+    GS-3.5: per-day completion boolean for PROCESS/HABIT goals.
+    Missing days are False, never an error — no shame for gaps.
+    """
+
+    date: str  # ISO date string YYYY-MM-DD
+    completed: bool
+    completion_count: int  # how many habit instances completed that day
+
+
+@strawberry.type
 class GoalGQLType:
     """Top-level goal aggregate — tracks lifecycle, momentum, and progress."""
 
@@ -114,6 +140,9 @@ class GoalGQLType:
     # Momentum (0–100, computed by background worker)
     momentum_score: Optional[float]
     last_momentum_calc: Optional[datetime]
+
+    # GS-3.2: 30-day sparkline history (populated only by goalWithHistory query)
+    momentum_history: Optional[List[MomentumDataPoint]] = None
 
     # AI decomposition lifecycle
     decomposition_state: DecompositionStateEnum
