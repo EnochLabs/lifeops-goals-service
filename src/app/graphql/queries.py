@@ -7,7 +7,7 @@ and are imported by mutations to avoid duplication.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, List, Optional
 
 import strawberry
@@ -28,6 +28,8 @@ from app.graphql.enums import (
 from app.graphql.types import (
     ActionGQLType,
     GoalGQLType,
+    HabitGridDay,
+    MomentumDataPoint,
     PhaseGQLType,
     RecurrenceGQLType,
 )
@@ -98,12 +100,17 @@ def _compute_progress_percent(goal: Any) -> Optional[float]:
     return None
 
 
-def _goal_to_type(goal: Any, phases: Optional[List[Any]] = None) -> GoalGQLType:
+def _goal_to_type(
+    goal: Any,
+    phases: Optional[List[Any]] = None,
+    momentum_history: Optional[List[MomentumDataPoint]] = None,
+) -> GoalGQLType:
     """Convert a Goal document to GoalGQLType.
 
     phases may be raw Phase documents (converted via _phase_to_type)
     or already-converted PhaseGQLType objects (when the caller has
     pre-loaded actions for the single-round-trip pattern in GS-2.6).
+    momentum_history is only populated by goalWithHistory (GS-3.2).
     """
     phase_types: Optional[List[PhaseGQLType]] = None
     if phases is not None:
@@ -127,6 +134,7 @@ def _goal_to_type(goal: Any, phases: Optional[List[Any]] = None) -> GoalGQLType:
         progress_percent=_compute_progress_percent(goal),
         momentum_score=goal.momentum_score,
         last_momentum_calc=goal.last_momentum_calc,
+        momentum_history=momentum_history,
         decomposition_state=DecompositionStateEnum(goal.decomposition_state),
         decomposition_error=goal.decomposition_error,
         tags=list(goal.tags or []),
@@ -135,6 +143,134 @@ def _goal_to_type(goal: Any, phases: Optional[List[Any]] = None) -> GoalGQLType:
         updated_at=goal.updated_at,
         phases=phase_types,
     )
+
+
+# ── Momentum history computation (GS-3.2) ────────────────────────────────────
+
+
+async def _compute_momentum_history(goal_id: str, days: int = 30) -> List[MomentumDataPoint]:
+    """Derive a per-day momentum score from completed_at timestamps.
+
+    We use a rolling 14-day window (MOMENTUM_WINDOW_DAYS) centred on
+    each calendar day to produce a smooth sparkline score — the same
+    formula the background worker uses for the current score.
+
+    Days with no scheduled actions inherit the previous day's score rather
+    than dropping to zero, so rest days don't create misleading crashes.
+    The result is a list of {date, score} points suitable for a sparkline.
+    """
+    from beanie import PydanticObjectId
+
+    from app.constants.goals import ActionStatus
+    from app.constants.limits import MOMENTUM_WINDOW_DAYS
+    from app.models.action import Action
+
+    # Use naive UTC datetimes throughout (consistent with how Action dates are stored)
+    window_start = datetime.utcnow() - timedelta(days=days + MOMENTUM_WINDOW_DAYS)
+
+    # Fetch all relevant actions in one query
+    all_actions = await Action.find(
+        Action.goal_id == PydanticObjectId(goal_id),
+    ).to_list()
+
+    # Separate scheduled (any status) from completed
+    scheduled_by_date: dict[str, int] = {}
+    completed_by_date: dict[str, int] = {}
+
+    for action in all_actions:
+        if action.due_date and action.due_date >= window_start:
+            day_key = (
+                action.due_date.date().isoformat()
+                if not hasattr(action.due_date, "date")
+                else str(action.due_date.date())
+            )
+            scheduled_by_date[day_key] = scheduled_by_date.get(day_key, 0) + 1
+
+        if action.status == ActionStatus.COMPLETED and action.completed_at:
+            day_key = (
+                action.completed_at.date().isoformat()
+                if not hasattr(action.completed_at, "date")
+                else str(action.completed_at.date())
+            )
+            completed_by_date[day_key] = completed_by_date.get(day_key, 0) + 1
+
+    # Build the sparkline: for each of the last `days` days, compute a
+    # rolling 14-day completion ratio ending on that day.
+    result: List[MomentumDataPoint] = []
+    today = datetime.utcnow().date()
+    last_score = 0.0
+
+    for offset in range(days - 1, -1, -1):
+        day = today - timedelta(days=offset)
+        window_end = day
+        window_begin = day - timedelta(days=MOMENTUM_WINDOW_DAYS)
+
+        total = sum(
+            v
+            for k, v in scheduled_by_date.items()
+            if window_begin.isoformat() <= k <= window_end.isoformat()
+        )
+        done = sum(
+            v
+            for k, v in completed_by_date.items()
+            if window_begin.isoformat() <= k <= window_end.isoformat()
+        )
+
+        if total > 0:
+            score = round(done / total * 100, 2)
+            last_score = score
+        else:
+            # Rest day — carry forward the last known score (no false crash)
+            score = last_score
+
+        result.append(MomentumDataPoint(date=str(day), score=score))
+
+    return result
+
+
+# ── Habit grid computation (GS-3.5) ──────────────────────────────────────────
+
+
+async def _compute_habit_grid(goal_id: str, days: int) -> List[HabitGridDay]:
+    """Per-day completion booleans for habit-style goals.
+
+    Returns a GitHub-contribution-graph-shaped list of days with
+    completion counts. Gaps are False/0, never an error — the caller
+    can style missing days however they wish (faded, empty, etc.).
+    No red indicators, no "missed" labels.
+    """
+    from beanie import PydanticObjectId
+
+    from app.constants.goals import ActionStatus, ActionType
+    from app.models.action import Action
+
+    # Use naive UTC datetimes (consistent with how Action.completed_at is stored)
+    since = datetime.utcnow() - timedelta(days=days)
+
+    # All HABIT instances completed in the window
+    habit_actions = await Action.find(
+        Action.goal_id == PydanticObjectId(goal_id),
+        Action.action_type == ActionType.HABIT,
+        Action.status == ActionStatus.COMPLETED,
+        Action.completed_at >= since,
+    ).to_list()
+
+    # Build a dict: date_str → count
+    completions_by_day: dict[str, int] = {}
+    for action in habit_actions:
+        if action.completed_at:
+            day_key = str(action.completed_at.date())
+            completions_by_day[day_key] = completions_by_day.get(day_key, 0) + 1
+
+    # Build the full grid — every day in the window, gaps are False/0
+    today = datetime.utcnow().date()
+    grid: List[HabitGridDay] = []
+    for offset in range(days - 1, -1, -1):
+        day = today - timedelta(days=offset)
+        count = completions_by_day.get(str(day), 0)
+        grid.append(HabitGridDay(date=str(day), completed=count > 0, completion_count=count))
+
+    return grid
 
 
 # ── Query class ──────────────────────────────────────────────────────────────
@@ -214,3 +350,76 @@ class Query:
 
         actions = await list_todays_actions(user.user_id, datetime.utcnow())
         return [_action_to_type(a) for a in actions]
+
+    @strawberry.field(
+        description=(
+            "Retrieve a goal with its 30-day momentum sparkline history (GS-3.2). "
+            "momentum_history is a list of {date, score} points suitable for a chart. "
+            "Gaps (rest days with no scheduled actions) carry forward the last known score "
+            "so the sparkline never shows a false crash."
+        )
+    )
+    async def goal_with_history(
+        self,
+        info: Info,
+        goal_id: strawberry.ID,
+        history_days: int = 30,
+    ) -> GoalGQLType:
+        user = info.context.get("user")
+        if not user:
+            raise UnauthenticatedError()
+
+        goal = await GoalRepository.get_by_id(str(goal_id))
+        if not goal:
+            raise GoalNotFoundError(str(goal_id))
+
+        from beanie import PydanticObjectId
+
+        if goal.user_id != PydanticObjectId(user.user_id):
+            raise GoalNotFoundError(str(goal_id))
+
+        # Clamp history_days to a sensible range (1–365)
+        history_days = max(1, min(history_days, 365))
+
+        phases = await PhaseRepository.list_for_goal(str(goal.id))
+        phases_with_actions = []
+        for phase in phases:
+            actions = await ActionRepository.list_for_phase(str(phase.id))
+            phases_with_actions.append((phase, actions))
+        phase_types = [_phase_to_type(p, acts) for p, acts in phases_with_actions]
+
+        momentum_history = await _compute_momentum_history(str(goal.id), days=history_days)
+
+        return _goal_to_type(goal, phase_types, momentum_history=momentum_history)
+
+    @strawberry.field(
+        description=(
+            "GitHub-contribution-graph-shaped per-day completion data for a HABIT goal (GS-3.5). "
+            "Returns `days` data points (default 90). "
+            "Each point has: date (YYYY-MM-DD), completed (bool), completion_count (int). "
+            "Missing days are False/0 — no red indicators, no 'missed' labels."
+        )
+    )
+    async def habit_grid(
+        self,
+        info: Info,
+        goal_id: strawberry.ID,
+        days: int = 90,
+    ) -> List[HabitGridDay]:
+        user = info.context.get("user")
+        if not user:
+            raise UnauthenticatedError()
+
+        goal = await GoalRepository.get_by_id(str(goal_id))
+        if not goal:
+            raise GoalNotFoundError(str(goal_id))
+
+        from beanie import PydanticObjectId
+
+        if goal.user_id != PydanticObjectId(user.user_id):
+            raise GoalNotFoundError(str(goal_id))
+
+        # Clamp to 1–365
+        days = max(1, min(days, 365))
+
+        return await _compute_habit_grid(str(goal.id), days)
